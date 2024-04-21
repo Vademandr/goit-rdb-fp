@@ -1,0 +1,141 @@
+create schema if not exists pandemic;
+use pandemic;
+----------------------------------------------
+create table if not exists countries(
+id int primary key auto_increment,
+code varchar(10) unique,
+country varchar(32) not null unique);
+
+insert into countries (code, country)
+select distinct code, entity from infectious_cases;
+
+create table if not exists infectious_cases_normalized
+as select * from infectious_cases;
+
+alter table infectious_cases_normalized
+add id int primary key auto_increment first,
+add country_id int after id,
+add constraint fk_country_id foreign key (country_id) references countries(id);
+
+update infectious_cases_normalized icn
+join countries c on icn.code = c.code
+set icn.country_id = c.id;
+
+alter table infectious_cases_normalized
+drop column entity, drop column code;
+----------------------------------------------
+select id, max(number_rabies) as max_value, min(number_rabies) as min_value,
+avg(number_rabies) as average_value
+from infectious_cases_normalized
+where number_rabies is not null and number_rabies <> ''
+group by id
+order by average_value desc
+limit 10;
+----------------------------------------------
+alter table infectious_cases_normalized
+add column start_date date null after Year,
+add column cur_date date null after start_date,
+add column substract_year int null after cur_date;
+
+drop function if exists fn_start_date;
+drop function if exists fn_cur_date;
+drop function if exists fn_subtract_year;
+
+delimiter //
+create function fn_start_date(year int)
+returns date
+deterministic no sql
+begin
+	declare result date;
+    set result = makedate(year, 1);
+    return result;
+end //
+delimiter ;
+
+delimiter // 
+create function fn_cur_date()
+returns date
+deterministic no sql
+begin
+	declare result date;
+    set result = curdate();
+    return result;
+end //
+delimiter ;
+
+delimiter //
+create function fn_subtract_year(cur_date date, start_date date)
+returns int
+deterministic no sql
+begin
+	declare result int;
+    set result = year(cur_date) - year(start_date);
+    return result;
+end //
+delimiter ;
+
+update infectious_cases_normalized
+set cur_date = fn_cur_date(),
+start_date = fn_start_date(year),
+substract_year = fn_subtract_year(cur_date, start_date);
+
+select * from infectious_cases_normalized;
+----------------------------------------------
+drop function if exists calculate_year_difference;
+
+delimiter //
+create function calculate_year_difference(year int)
+returns int
+deterministic
+begin
+	declare start_date date;
+    declare curent_date date;
+    declare year_difference int;
+    
+    set start_date = makedate(year, 1);
+    set curent_date = curdate();
+    
+    set year_difference = year(curent_date) - year(start_date);
+    
+    return year_difference;
+end //
+delimiter ;
+
+alter table infectious_cases_normalized
+add column substract_year_2 int;
+
+update infectious_cases_normalized
+set substract_year_2 = calculate_year_difference(year);
+select *
+from infectious_cases_normalized;
+----------------------------------------------
+drop function if exists calculate_period_cases;
+delimiter //
+create function calculate_period_cases(cases_per_year int, divider int)
+returns int
+deterministic
+begin
+	if cases_per_year is null or divider is null or divider = 0 
+		then
+		return 0;
+    else
+		return cases_per_year / divider;
+	end if;
+end //
+delimiter ;
+
+select calculate_period_cases(1000, 4);
+
+alter table infectious_cases_normalized
+add column avg_malaria_cases_per_quarter int;
+
+update infectious_cases_normalized
+set Number_malaria = null
+where number_malaria = '';
+
+update infectious_cases_normalized
+set avg_malaria_cases_per_quarter = calculate_period_cases(Number_malaria, 4)
+where Number_malaria is not null;
+
+select *
+from infectious_cases_normalized;
