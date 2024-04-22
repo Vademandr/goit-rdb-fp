@@ -18,14 +18,14 @@ add country_id int after id,
 add constraint fk_country_id foreign key (country_id) references countries(id);
 
 update infectious_cases_normalized icn
-join countries c on icn.code = c.code
+join countries c on icn.code = c.code and icn.entity = c.country
 set icn.country_id = c.id;
 
 alter table infectious_cases_normalized
 drop column entity, drop column code;
 ----------------------------------------------
 select id, max(number_rabies) as max_value, min(number_rabies) as min_value,
-avg(number_rabies) as average_value
+avg(number_rabies) as average_value, sum(number_rabies) as total_value
 from infectious_cases_normalized
 where number_rabies is not null and number_rabies <> ''
 group by id
@@ -46,9 +46,7 @@ create function fn_start_date(year int)
 returns date
 deterministic no sql
 begin
-	declare result date;
-    set result = makedate(year, 1);
-    return result;
+    return makedate(year, 1);
 end //
 delimiter ;
 
@@ -57,9 +55,7 @@ create function fn_cur_date()
 returns date
 deterministic no sql
 begin
-	declare result date;
-    set result = curdate();
-    return result;
+    return curdate();
 end //
 delimiter ;
 
@@ -68,9 +64,7 @@ create function fn_subtract_year(cur_date date, start_date date)
 returns int
 deterministic no sql
 begin
-	declare result int;
-    set result = year(cur_date) - year(start_date);
-    return result;
+	return timestampdiff(year, start_date, cur_date);
 end //
 delimiter ;
 
@@ -88,16 +82,7 @@ create function calculate_year_difference(year int)
 returns int
 deterministic
 begin
-	declare start_date date;
-    declare curent_date date;
-    declare year_difference int;
-    
-    set start_date = makedate(year, 1);
-    set curent_date = curdate();
-    
-    set year_difference = year(curent_date) - year(start_date);
-    
-    return year_difference;
+    return timestampdiff(year, makedate(year, 1), curdate());
 end //
 delimiter ;
 
